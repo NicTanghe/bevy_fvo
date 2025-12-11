@@ -213,11 +213,11 @@ impl FlowField {
 pub fn flowfield_group_stop_system(
     mut cmds: Commands,
     mut q_ff: Query<(Entity, &mut FlowField)>,
-    q_tf: Query<(&Transform, &Boid)>,
+    q_tf: Query<(&Transform, &FvoAgent)>,
     q_dest: Query<&Destination>,
-    grid: Res<Grid>, // ← you already have this in your boids system
+    grid: Res<Grid>, // ← you already have this in your FVO system
 ) {
-    // ——— copy your boids’ world-to-bucket math verbatim ———
+    // ——— reuse the world-to-bucket math from the FVO solver ———
     let world_w = grid.size.x as f32 * grid.cell_diameter;
     let world_d = grid.size.y as f32 * grid.cell_diameter;
     let bucket_w = world_w / grid.buckets as f32;
@@ -230,7 +230,7 @@ pub fn flowfield_group_stop_system(
         // 1) Have we already marked an arrival?
         let mut any_arrived = ff.arrived;
 
-        // 2) Build a list of “arrived” boids (no Destination)
+        // 2) Build a list of “arrived” agents (no Destination)
         let mut arrived_list: Vec<Entity> = ff
             .units
             .iter()
@@ -272,10 +272,10 @@ pub fn flowfield_group_stop_system(
             if q_dest.get(u).is_err() {
                 continue;
             } // skip already arrived
-            if let Ok((tf_u, boid_u)) = q_tf.get(u) {
+            if let Ok((tf_u, agent)) = q_tf.get(u) {
                 let bx = ((tf_u.translation.x - origin.x) / bucket_w).floor() as i32;
                 let by = ((tf_u.translation.z - origin.y) / bucket_d).floor() as i32;
-                let stop_r2 = (boid_u.info.neighbor_radius * 2.0).powi(2);
+                let stop_r2 = (agent.settings.sensor_range.max(agent.settings.radius * 2.0)).powi(2);
 
                 'probe: for dx in -1..=1 {
                     for dy in -1..=1 {

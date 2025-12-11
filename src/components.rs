@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use bevy::prelude::*;
 
 /// A marker component for the map base. Insert this into your base map entity.
@@ -10,7 +8,7 @@ pub struct MapBase;
 #[derive(Component)]
 pub struct GameCamera;
 
-/// Destination marker. This is dynamically added to every boid entity when the flowfield is initialized.
+/// Destination marker. This is dynamically added to every agent entity when the flowfield is initialized.
 #[derive(Component)]
 pub struct Destination;
 
@@ -20,77 +18,84 @@ pub struct Destination;
 #[derive(Component, Default)]
 pub struct Obstacle(pub Vec2);
 
-/// Boid component with settings. Insert this into your entities that you want to control with the flowfields. Use the Boid::new() to use custom settings.
+/// FVO agent that steers using a feasible-velocity-obstacle solver.
 #[derive(Component, Debug)]
-pub struct Boid {
+pub struct FvoAgent {
+    /// Last chosen steering / velocity vector in world space.
     pub steering: Vec3,
-    pub prev_neighbors: HashSet<Entity>, // store last frame's neighbors
+    /// Current linear velocity used by the solver.
     pub velocity: Vec3,
-    pub prev_steer: Vec3, // start at rest
-    pub info: BoidsInfo,
+    /// Tunable parameters for the solver.
+    pub settings: FvoSettings,
 }
 
-impl Default for Boid {
+impl Default for FvoAgent {
     fn default() -> Self {
         Self {
             steering: Vec3::ZERO,
-            prev_neighbors: HashSet::new(),
             velocity: Vec3::ZERO,
-            prev_steer: Vec3::ZERO, // start at rest
-            info: BoidsInfo::default(),
+            settings: FvoSettings::default(),
         }
     }
 }
 
-impl Boid {
-    /// Creates a new boid with the given parameters.
-    ///
-    /// # Example
-    /// ```
-    /// Boid::new(50.0, 1.0, 1.0, 5.0);
-    /// ```
-    ///
-    /// # Parameters
-    /// - `separation`: The separation weight. This determines how much the boid will try to avoid other boids.
-    /// - `alignment`: The alignment weight. This determines how much the boid will try to align its velocity with other boids.
-    /// - `cohesion`: The cohesion weight. This determines how much the boid will try to move towards the center of its neighbors.
-    /// - `radius`: The radius of the boid. This determines how far the boid can see its neighbors before it applies the steering forces.
-    pub fn new(separation: f32, alignment: f32, cohesion: f32, radius: f32) -> Self {
-        let neighbor_radius = radius;
+impl FvoAgent {
+    /// Creates a new agent with custom FVO settings.
+    pub fn new(settings: FvoSettings) -> Self {
         Self {
             steering: Vec3::ZERO,
-            prev_neighbors: HashSet::new(),
             velocity: Vec3::ZERO,
-            prev_steer: Vec3::ZERO,
-            info: BoidsInfo {
-                separation,
-                alignment,
-                cohesion,
-                neighbor_radius: neighbor_radius,
-                neighbor_exit_radius: neighbor_radius * 1.05,
-            },
+            settings,
         }
     }
 }
 
+/// Parameters for the feasible velocity obstacle solver.
 #[derive(Debug, Copy, Clone, Reflect)]
-pub struct BoidsInfo {
-    pub separation: f32,           // push apart
-    pub alignment: f32,            // match heading
-    pub cohesion: f32,             // pull toward center
-    pub neighbor_radius: f32,      // how far you “see” neighbors
-    pub neighbor_exit_radius: f32, // new: slightly larger
+pub struct FvoSettings {
+    /// Desired cruise speed along the flow field direction.
+    pub preferred_speed: f32,
+    /// Maximum speed clamp.
+    pub max_speed: f32,
+    /// Maximum linear acceleration applied per second.
+    pub max_accel: f32,
+    /// Lookahead time window for predicting collisions.
+    pub horizon: f32,
+    /// Physical radius of the agent in world units.
+    pub radius: f32,
+    /// Maximum neighbor distance considered for avoidance.
+    pub sensor_range: f32,
 }
 
-impl Default for BoidsInfo {
+impl Default for FvoSettings {
     fn default() -> Self {
-        let neighbor_radius = 5.0;
         Self {
-            separation: 50.0,                             // strongest urge to avoid collisions
-            alignment: 0.0,                               // medium urge to line up
-            cohesion: 0.0,                                // medium urge to stay together
-            neighbor_radius: neighbor_radius,             // in world‐units (tweak to taste)
-            neighbor_exit_radius: neighbor_radius * 1.05, // new: slightly larger
+            preferred_speed: 50.0,
+            max_speed: 60.0,
+            max_accel: 100.0,
+            horizon: 3.0,
+            radius: 2.5,
+            sensor_range: 8.0,
+        }
+    }
+}
+
+impl FvoSettings {
+    pub fn new(
+        preferred_speed: f32,
+        max_speed: f32,
+        max_accel: f32,
+        horizon: f32,
+        radius: f32,
+        sensor_range: f32,
+    ) -> Self {
+        Self {
+            preferred_speed,
+            max_speed,
+            max_accel,
+            horizon,
+            radius,
+            sensor_range,
         }
     }
 }

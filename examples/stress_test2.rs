@@ -1,12 +1,10 @@
 // This example uses a simple point-and-click movement system to move units around the map.
 // This is a stress test using 5000 units.
 
-use bevy::{
-    color::palettes::tailwind::*, math::bounding::Aabb2d, prelude::*, window::PrimaryWindow,
-};
+use bevy::{color::palettes::tailwind::*, prelude::*, window::PrimaryWindow};
 use bevy_pathfinding::{
     components::*,
-    debug::resources::{BoidUpdater, DbgOptions},
+    debug::resources::{DbgOptions, FvoUpdater},
     events::InitializeFlowFieldEv,
     grid::Grid,
     utils, BevyPathfindingPlugin,
@@ -26,7 +24,7 @@ fn main() {
     let mut app = App::new();
 
     app.insert_resource(Grid::new(BUCKETS, MAP_GRID, CELL_SIZE)) // ADD THIS!
-        .insert_resource(BoidUpdater::new(10.0, 0.0, 0.0, 5.0))
+        .insert_resource(FvoUpdater::new(110.0, 140.0, 200.0, 3.0, 3.5, 12.0))
         .add_plugins((
             DefaultPlugins,
             BevyPathfindingPlugin, // ADD THIS!
@@ -35,9 +33,6 @@ fn main() {
         .add_systems(Update, (set_unit_destination, move_unit))
         .run();
 }
-
-#[derive(Component)]
-struct Speed(f32);
 
 fn camera(mut cmds: Commands) {
     cmds.spawn((
@@ -88,12 +83,19 @@ fn spawn_units(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let mut unit = |pos: Vec3| {
+        let settings = FvoSettings {
+            preferred_speed: 110.0,
+            max_speed: 140.0,
+            max_accel: 200.0,
+            horizon: 3.0,
+            radius: 3.5,
+            sensor_range: 12.0,
+        };
         (
             Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
             MeshMaterial3d(materials.add(StandardMaterial::from_color(BLUE_500))),
             Transform::from_translation(pos),
-            Speed(150.0),
-            Boid::new(115.0, 0.0, 0.0, 7.5),
+            FvoAgent::new(settings),
             Name::new("Unit"),
         )
     };
@@ -121,7 +123,7 @@ fn spawn_units(
 fn set_unit_destination(
     mut cmds: Commands,
     input: Res<ButtonInput<MouseButton>>,
-    mut q_units: Query<Entity, With<Boid>>,
+    mut q_units: Query<Entity, With<FvoAgent>>,
     q_map: Query<&GlobalTransform, With<MapBase>>,
     q_cam: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
     q_window: Query<&Window, With<PrimaryWindow>>,
@@ -174,15 +176,15 @@ fn set_unit_destination(
 }
 
 // ADD THIS!
-// moves all units (boids) that have a destination, towards it
+// moves all units that have a destination toward it using the FVO velocity
 // if you are using a physics engine, you would want to swap out the 'Transform' here
 fn move_unit(
-    mut q_units: Query<(&mut Transform, &mut Boid, &Speed), With<Destination>>,
+    mut q_units: Query<(&mut Transform, &FvoAgent), With<Destination>>,
     time: Res<Time>,
 ) {
     let delta_secs = time.delta_secs();
 
-    for (mut tf, boid, speed) in q_units.iter_mut() {
-        tf.translation += boid.steering.normalize_or_zero() * delta_secs * speed.0;
+    for (mut tf, agent) in q_units.iter_mut() {
+        tf.translation += agent.velocity * delta_secs;
     }
 }

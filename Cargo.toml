@@ -2,7 +2,7 @@
 name = "bevy_pathfinding"
 version = "0.1.0"
 edition = "2021"
-description = "A simple 3D Bevy plugin that combines flowfield pathfinding with boid-based collision avoidance to move units smoothly. Great for RTS games!"
+description = "A simple 3D Bevy plugin that combines flowfield pathfinding with feasible velocity obstacle (FVO) collision avoidance to move units smoothly. Great for RTS games!"
 keywords = ["bevy", "pathfinding", "rts"]
 categories = ["game-development"]
 license = "MIT OR Apache-2.0"

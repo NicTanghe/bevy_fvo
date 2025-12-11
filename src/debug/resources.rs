@@ -1,7 +1,7 @@
 use bevy::{image::*, prelude::*, render::render_resource::*};
 use image::ImageFormat;
 
-use crate::components::{Boid, BoidsInfo};
+use crate::components::{FvoAgent, FvoSettings};
 
 const DBG_ICON: &[u8] = include_bytes!("../../assets/imgs/dbg_icon.png");
 
@@ -12,9 +12,9 @@ impl Plugin for ResourcesPlugin {
         app.init_resource::<DbgOptions>()
             .init_resource::<DbgIcon>()
             .register_type::<DbgOptions>()
-            .add_systems(PreStartup, init_boid_updater)
+            .add_systems(PreStartup, init_fvo_updater)
             .add_systems(Startup, load_dbg_icon)
-            .add_systems(Update, update_boids);
+            .add_systems(Update, update_fvo);
     }
 }
 
@@ -24,7 +24,7 @@ pub struct DbgIcon(pub Handle<Image>);
 #[derive(Reflect, Resource, Clone, Copy)]
 #[reflect(Resource)]
 pub struct DbgOptions {
-    pub boids_info: BoidsInfo,
+    pub fvo_settings: FvoSettings,
     pub draw_grid: bool,
     pub draw_spatial_grid: bool,
     pub draw_spatial_hashing_grid: bool,
@@ -39,7 +39,7 @@ pub struct DbgOptions {
 impl Default for DbgOptions {
     fn default() -> Self {
         DbgOptions {
-            boids_info: BoidsInfo::default(),
+            fvo_settings: FvoSettings::default(),
             draw_grid: true,
             draw_spatial_grid: false,
             draw_spatial_hashing_grid: false,
@@ -109,67 +109,64 @@ impl DrawMode {
     }
 }
 
-/// This component is updated whenever the boids info in the debug UI menu changes.
+/// Updated whenever the FVO settings in the debug UI menu change.
 #[derive(Resource, Reflect, Debug)]
-pub struct BoidUpdater {
-    pub separation_weight: f32,    // push apart
-    pub alignment_weight: f32,     // match heading
-    pub cohesion_weight: f32,      // pull toward center
-    pub neighbor_radius: f32,      // how far you “see” neighbors
-    pub neighbor_exit_radius: f32, // new: slightly larger
+pub struct FvoUpdater {
+    pub preferred_speed: f32,
+    pub max_speed: f32,
+    pub max_accel: f32,
+    pub horizon: f32,
+    pub radius: f32,
+    pub sensor_range: f32,
 }
 
-/// Does not need to be explicity set unless custom values are desired.
-/// # Default Values
-/// - `separation_weight`: 50.0
-/// - `alignment_weight`: 0.0
-/// - `cohesion_weight`: 0.0
-/// - `neighbor_radius`: 5.0
-/// - `neighbor_exit_radius`: neighbor_radius (5) * 1.05
-impl Default for BoidUpdater {
+impl Default for FvoUpdater {
     fn default() -> Self {
-        let neighbor_radius = 5.0;
         Self {
-            separation_weight: 50.0,          // strongest urge to avoid collisions
-            alignment_weight: 0.0,            // medium urge to line up
-            cohesion_weight: 0.0,             // medium urge to stay together
-            neighbor_radius: neighbor_radius, // in world‐units (tweak to taste)
-            neighbor_exit_radius: neighbor_radius * 1.05, // new: slightly larger
+            preferred_speed: 50.0,
+            max_speed: 60.0,
+            max_accel: 100.0,
+            horizon: 3.0,
+            radius: 2.5,
+            sensor_range: 8.0,
         }
     }
 }
 
-impl BoidUpdater {
+impl FvoUpdater {
     pub fn new(
-        separation_weight: f32,
-        alignment_weight: f32,
-        cohesion_weight: f32,
-        neighbor_radius: f32,
+        preferred_speed: f32,
+        max_speed: f32,
+        max_accel: f32,
+        horizon: f32,
+        radius: f32,
+        sensor_range: f32,
     ) -> Self {
-        let neighbor_exit_radius = neighbor_radius * 1.05;
         Self {
-            separation_weight,
-            alignment_weight,
-            cohesion_weight,
-            neighbor_radius,
-            neighbor_exit_radius,
+            preferred_speed,
+            max_speed,
+            max_accel,
+            horizon,
+            radius,
+            sensor_range,
         }
     }
 }
 
-fn init_boid_updater(mut cmds: Commands, boid_updater: Option<Res<BoidUpdater>>) {
-    if boid_updater.is_none() {
-        cmds.insert_resource(BoidUpdater::default());
+fn init_fvo_updater(mut cmds: Commands, fvo_updater: Option<Res<FvoUpdater>>) {
+    if fvo_updater.is_none() {
+        cmds.insert_resource(FvoUpdater::default());
     }
 }
 
-fn update_boids(mut q_boids: Query<&mut Boid>, boid_updater: Res<BoidUpdater>) {
-    for mut boid in q_boids.iter_mut() {
-        boid.info.separation = boid_updater.separation_weight;
-        boid.info.alignment = boid_updater.alignment_weight;
-        boid.info.cohesion = boid_updater.cohesion_weight;
-        boid.info.neighbor_radius = boid_updater.neighbor_radius;
-        boid.info.neighbor_exit_radius = boid_updater.neighbor_exit_radius;
+fn update_fvo(mut q_agents: Query<&mut FvoAgent>, fvo_updater: Res<FvoUpdater>) {
+    for mut agent in q_agents.iter_mut() {
+        agent.settings.preferred_speed = fvo_updater.preferred_speed;
+        agent.settings.max_speed = fvo_updater.max_speed;
+        agent.settings.max_accel = fvo_updater.max_accel;
+        agent.settings.horizon = fvo_updater.horizon;
+        agent.settings.radius = fvo_updater.radius;
+        agent.settings.sensor_range = fvo_updater.sensor_range;
     }
 }
 

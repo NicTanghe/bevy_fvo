@@ -30,9 +30,6 @@ fn main() {
         .run();
 }
 
-#[derive(Component)]
-struct Speed(f32);
-
 fn camera(mut cmds: Commands) {
     cmds.spawn((
         Camera3d::default(),
@@ -82,12 +79,19 @@ fn spawn_units(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let mut unit = |pos: Vec3| {
+        let settings = FvoSettings {
+            preferred_speed: 115.0,
+            max_speed: 150.0,
+            max_accel: 220.0,
+            horizon: 2.5,
+            radius: 3.0,
+            sensor_range: 12.0,
+        };
         (
             Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
             MeshMaterial3d(materials.add(StandardMaterial::from_color(BLUE_500))),
             Transform::from_translation(pos),
-            Speed(150.0),
-            Boid::new(115.0, 0.0, 0.0, 7.5),
+            FvoAgent::new(settings),
             Name::new("Unit"),
         )
     };
@@ -115,7 +119,7 @@ fn spawn_units(
 fn set_unit_destination(
     mut cmds: Commands,
     input: Res<ButtonInput<MouseButton>>,
-    mut q_units: Query<Entity, With<Boid>>,
+    mut q_units: Query<Entity, With<FvoAgent>>,
     q_map: Query<&GlobalTransform, With<MapBase>>,
     q_cam: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
     q_window: Query<&Window, With<PrimaryWindow>>,
@@ -168,15 +172,15 @@ fn set_unit_destination(
 }
 
 // ADD THIS!
-// moves all units (boids) that have a destination, towards it
+// moves all units that have a destination toward it using the FVO velocity
 // if you are using a physics engine, you would want to swap out the 'Transform' here
 fn move_unit(
-    mut q_units: Query<(&mut Transform, &mut Boid, &Speed), With<Destination>>,
+    mut q_units: Query<(&mut Transform, &FvoAgent), With<Destination>>,
     time: Res<Time>,
 ) {
     let delta_secs = time.delta_secs();
 
-    for (mut tf, boid, speed) in q_units.iter_mut() {
-        tf.translation += boid.steering.normalize_or_zero() * delta_secs * speed.0;
+    for (mut tf, agent) in q_units.iter_mut() {
+        tf.translation += agent.velocity * delta_secs;
     }
 }

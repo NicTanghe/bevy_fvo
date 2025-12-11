@@ -1,6 +1,6 @@
 # Bevy Pathfinding
 
-A simple 3D Bevy plugin that combines **flowfield pathfinding** with **boid-based collision avoidance** to move units smoothly. Great for RTS games!
+A simple 3D Bevy plugin that combines **flowfield pathfinding** with a **feasible velocity obstacle (FVO)** avoidance solver to move units smoothly. Great for RTS games!
 
 ![demo](assets/demo.gif)
 
@@ -8,13 +8,13 @@ A simple 3D Bevy plugin that combines **flowfield pathfinding** with **boid-base
 
 A grid-based navigation technique that first calculates the minimum “cost” from every cell to a target, then turns those costs into a field of simple direction vectors. Units just sample the vector under their feet each step to follow an optimal path with almost no per-unit computation.
 
-### Okay, but what the heck is **Boid-Based Collision Avoidance**?
+### Okay, but what the heck is **Feasible Velocity Obstacle (FVO) steering**?
 
-A lightweight, local steering technique where each unit blends three factors—steering away from too-close neighbors (separation), matching their heading (alignment), and moving toward the group’s center (cohesion)—to naturally avoid collisions and maintain smooth, flock-like motion.
+FVO searches for a reachable velocity that stays outside predicted collision cones over a short horizon (see https://motion.cs.umn.edu/r/FVO/icra15.pdf). Each agent nudges its velocity away from imminent collision trajectories while respecting its own speed and acceleration limits, then blends that with the preferred flowfield direction.
 
 ### Sounds cool, but wouldn't applying those forces be exponentially expensive?
 
-Actually, no. The Bevy Pathfinding crate features a powerful spatial partitioning (or bucketing) optimization. When you initialize the grid using: `app.insert_resource(Grid::new(BUCKETS, MAP_GRID, CELL_SIZE));`, you include a **BUCKETS** value. The grid is split equally into this BUCKETS value, so each boid is applying forces against other boids in the **same bucket**. *Nice.*
+Actually, no. The Bevy Pathfinding crate features a powerful spatial partitioning (or bucketing) optimization. When you initialize the grid using: `app.insert_resource(Grid::new(BUCKETS, MAP_GRID, CELL_SIZE));`, you include a **BUCKETS** value. The grid is split equally into this BUCKETS value, so each agent only evaluates neighbors that share nearby buckets. *Nice.*
 
 Be sure to play around with the example(s) and adjust the BUCKETS value. Then use the debug UI to visualize the buckets.
 
@@ -47,7 +47,7 @@ cargo run --example <example name> --features bevy_pathfinding/debug
 
 ## Using the Debug Settings
 
-When using the debug UI settings, it will automatically update every boid in the scene with the values displayed in the UI. If you have multiple different units that require separate settings, this will be an issue. The debug UI is meant only for development purposes to easily visualize the behavior of the flowfield and boids. This will help you pinpoint the exact settings that are ideal for you.
+When using the debug UI settings, it will automatically update every FVO agent in the scene with the values displayed in the UI. If you have multiple different units that require separate settings, this will be an issue. The debug UI is meant only for development purposes to easily visualize the behavior of the flowfield and avoidance. This will help you pinpoint the exact settings that are ideal for you.
 
 **Important Note!** - If you have your own shaders applied, the debug UI may cause conflicts with them. It is recommended to disable your shaders while using the debug UI.
 
@@ -65,12 +65,13 @@ cargo run <project name> --features bevy_pathfinding/debug
 - **Spatial Grid** : Draw the spatial partitioning grid  
 - **Draw Mode 1** : Draw the flowfield/costfield/integration field/cell indexes  
 - **Draw Mode 2** : Draw the flowfield/costfield/integration field/cell indexes (secondary slot)  
-- Boids Info:  
-  - **Radius** : Draw boid radius  
-  - **Separation** : separation weight (how strongly it steers away)  
-  - **Cohesion** : cohesion weight (how strongly it steers inward)  
-  - **Alignment** : alignment weight (how strongly it matches neighbor heading)  
-  - **Radius** : how far each boid “sees” before applying the above factors  
+- FVO Settings:  
+  - **Preferred Speed** : target cruise speed along the flowfield  
+  - **Max Speed** : clamp for the solved velocity  
+  - **Max Accel** : maximum linear acceleration applied per step  
+  - **Horizon** : lookahead time window for collision checks  
+  - **Sensor Range** : how far the agent looks for neighbors  
+  - **Radius** : physical agent radius used by the solver  
 
 ![debug UI demo](assets/debug_ui_demo.gif)
 

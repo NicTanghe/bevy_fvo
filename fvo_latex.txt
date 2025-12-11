@@ -1,0 +1,223 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+
+\title{Prioritized Group Navigation with Formation Velocity Obstacles}
+\author{Ioannis Karamouzas \and Stephen J.\ Guy}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce the problem of navigating a group of robots having
+prioritized formations amidst static and dynamic obstacles. Our
+formulation allows users to define template formations with associated
+priority values. At each planning cycle we compute a new formation that
+balances these priorities with collision-free progress toward the goal.
+To achieve this we introduce Formation Velocity Obstacles (FVO), a new
+velocity-based navigation method for anisotropic entities that rotate to
+align with their travel direction. We integrate FVO with a Bayesian
+framework to infer priority values for arbitrary formations. The result
+is a complete framework for prioritized formation planning.
+\end{abstract}
+
+\section{Introduction}
+
+Multiple robots moving together while maintaining specific
+configurations are widely used for tasks such as search and rescue,
+exploration, and patrol. Existing formation control methods include
+behavioral approaches, leader–follower systems, virtual structures,
+potential fields, and roadmap-based planning. Pattern formation has also
+been studied, but usually without obstacles.
+
+Here we focus on safely navigating a group through static and dynamic
+obstacles. Our method allows the group to deform or change formation.
+Users provide template formations with priority values. The group then
+selects formations dynamically based on both priorities and the
+constraints imposed by obstacles.
+
+Since deviations from templates will occur, we propose a Bayesian method
+to infer priorities for arbitrary formations. Additionally, steering a
+formation in dynamic environments requires collision avoidance: we
+extend velocity-obstacle techniques to anisotropic formations that must
+rotate with their direction of travel. We introduce Formation Velocity
+Obstacles (FVO) to guarantee safe motion.
+
+\section{Overview}
+
+\subsection{Notation}
+
+Scalars are written in italics, vectors in bold. A normalized vector
+is $\hat{\mathbf{x}}$, the perpendicular vector is $\mathbf{x}^\perp$,
+and a unit vector pointing at angle $\theta$ is
+$\boldsymbol{\nu}_\theta = (\cos\theta,\ \sin\theta)^T$.
+
+The open segment between $\mathbf{a}$ and $\mathbf{a}+\mathbf{b}$ is
+\[
+L(\mathbf{a},\mathbf{b})=\{\mathbf{a}+s\mathbf{b} \mid s\in(0,1)\}.
+\]
+
+An oriented bounding box of half-height $h$ and half-width $w$ centered
+at $\mathbf{p}$ and oriented along $\boldsymbol{\nu}$ is
+\[
+B(\mathbf{p},\boldsymbol{\nu},h,w) =
+\{\mathbf{p}+a\boldsymbol{\nu}+b\boldsymbol{\nu}^\perp
+\mid |a|\le h,\ |b|\le w\}.
+\]
+
+The Minkowski sum of sets $X,Y$ is
+\[
+X\oplus Y=\{\mathbf{x}+\mathbf{y}\mid \mathbf{x}\in X,\
+\mathbf{y}\in Y\}.
+\]
+
+\subsection{Problem Definition}
+
+We have $n$ holonomic robots that must maintain formation while moving
+toward a goal. A user provides $k$ template formations
+$T=\{T_1,\dots,T_k\}$ with priority values $p_i$.
+Formations are \textit{loose}: any robot may occupy any position.
+
+Robots must reach the goal while staying close to templates and
+avoiding static and dynamic disc obstacles. Robots themselves are discs
+moving in a 2D plane.
+
+\subsection{Overall Approach}
+
+Each timestep consists of two phases:
+
+\paragraph{Group Planning Phase}
+We compute a formation $F^\ast$ maximizing
+\[
+E(F)=p_F\,(\mathbf{v}_F \cdot \hat{\mathbf{v}}_{\text{pref}}),
+\]
+where $p_F$ is inferred priority, $\mathbf{v}_F$ is the optimal
+collision-free velocity of formation $F$, and
+$\mathbf{v}_{\text{pref}}$ points toward the goal.
+
+\paragraph{Robot Planning Phase}
+Given \(F^\ast\), each robot receives a preferred velocity toward its
+assigned position in the future formation. ORCA provides a local,
+collision-free velocity.
+
+\section{Bayesian Formation Interpolation}
+
+A formation $F$ should have:
+1) the same priority as a matching template,
+2) no higher priority than the top template,
+3) priority close to a template if similar.
+
+We assume any formation $F$ can be expressed as:
+\[
+F = a_1 T_1 + \cdots + a_k T_k + \mathcal{N}(0,\sigma^2),
+\qquad
+\sum_i a_i = 1,\ a_i \ge 0.
+\]
+
+Given coefficients $a_i$ and noise $\sigma$, the inferred priority is
+\[
+p_F = a_1 p_1 + \cdots + a_k p_k - \gamma \sigma.
+\]
+
+We estimate $(a_1,\dots,a_k,\sigma)$ by maximizing the likelihood:
+\[
+\arg\max L(F | a_i,\sigma).
+\]
+
+Let $D(F, a_1T_1+\dots+a_kT_k)$ be the sum of pairwise distances after
+best matching robots to template positions. Then:
+\[
+\arg\max -\frac{D(F, a_1T_1+\dots+a_kT_k)^2}{\sigma^2}.
+\]
+
+Expectation–Maximization is used to solve for $a_i$ and $\sigma$.
+
+\section{Oriented Formation Planning}
+
+We compute the best collision-free velocity $\mathbf{v}_F$ for the
+formation, assuming it may rotate instantly to align with its new travel
+direction.
+
+\subsection{Velocity Obstacles}
+
+A classical velocity obstacle $VO^\tau_{A|O}$ is the set of relative
+velocities of robot $A$ that will collide with obstacle $O$ within time
+$\tau$.
+
+However, formations are anisotropic and must rotate, so classical VOs
+are insufficient. We therefore define FVOs.
+
+\subsection{Formation Velocity Obstacles}
+
+Let $F$ be the oriented bounding box containing the formation, with
+half-width $w_F$ and half-height $h_F$. Consider the Minkowski sum of
+the obstacle disc with $-F$, giving half-width
+$w=w_F+r_O$ and half-height $h=h_F+r_O$.
+
+If $\boldsymbol{\nu}_\theta$ is the assumed travel direction and
+$\mathbf{v}=\kappa\boldsymbol{\nu}_\theta$, then a collision occurs if:
+
+\[
+|(\mathbf{p}_O+t\mathbf{v}_O)\cdot \boldsymbol{\nu}_\theta^\perp| < w,
+\]
+\[
+|(\mathbf{p}_O+t\mathbf{v}_O - t\mathbf{v})\cdot \boldsymbol{\nu}_\theta| < h.
+\]
+
+For each $\theta$, this produces a line segment in velocity space. The
+union over all $\theta\in[-\pi,\pi]$ and time $t\in(0,\tau)$ defines:
+
+\[
+FVO^\tau_{F|O} =
+\bigcup_{\theta,t} L\Big(
+\big(\tfrac{\mathbf{p}_O\cdot\boldsymbol{\nu}_\theta - h}{t} + m\big)\boldsymbol{\nu}_\theta,
+\ \frac{2h}{t}\boldsymbol{\nu}_\theta
+\Big),
+\]
+where $m = \mathbf{v}_O \cdot \boldsymbol{\nu}_\theta$.
+
+\subsection{Choosing a Collision-free Velocity}
+
+Feasible velocities are:
+\[
+C_F = C(0, v_{\max}) \setminus
+\bigcup_O FVO^\tau_{F|O}.
+\]
+
+We choose:
+\[
+\mathbf{v}_F = \arg\min_{\mathbf{v} \in C_F}
+\|\mathbf{v} - \mathbf{v}_{\text{pref}}\|.
+\]
+
+Because FVOs are non-convex, we approximate each by a tangent constraint
+as in ORCA.
+
+\section{Experiments}
+
+Simulations include:
+\begin{itemize}
+\item Triangle formation rotating to pass through a narrow corridor.
+\item Four-agent squad choosing between line-abreast or column
+depending on corridor width, influenced by parameter $\gamma$.
+\item Dynamic obstacles causing deformation of the formation when
+moving fast.
+\item A 20-agent circular formation navigating a bent hallway, switching
+between large circle, double circle, and small circle templates.
+\end{itemize}
+
+Simulations run in real time at over 100 fps.
+
+\section{Conclusion}
+
+We introduced prioritized formations, Bayesian interpolation for
+formation desirability, and Formation Velocity Obstacles for anisotropic
+group navigation. This yields real-time, collision-free motion through
+complex environments.
+
+Future work includes better geometric representations than bounding
+boxes, broader sampling of intermediate formations, decentralized
+planning, splitting/merging formations, and applying FVOs to
+non-holonomic robots such as cars.
+
+\end{document}

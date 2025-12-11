@@ -32,7 +32,7 @@ impl Plugin for UiPlugin {
                     slider_drag_update.run_if(resource_exists::<DragState>),
                     remove_drag_on_win_focus_lost.run_if(resource_exists::<DragState>),
                     handle_dropdown_interaction,
-                    handle_boids_dropdown_interaction,
+                    handle_fvo_dropdown_interaction,
                     handle_hide_dbg_interaction,
                     handle_drawmode_option_interaction,
                     handle_draw_btn_interaction,
@@ -44,7 +44,7 @@ impl Plugin for UiPlugin {
             .add_observer(toggle_dbg_visibility)
             .add_observer(toggle_dropdown_visibility)
             .add_observer(update_active_dropdown_option)
-            .add_observer(toggle_boids_dropdown_visibility);
+            .add_observer(toggle_fvo_dropdown_visibility);
     }
 }
 
@@ -52,13 +52,10 @@ impl Plugin for UiPlugin {
 struct ToggleDbgVisibilityEv(bool);
 
 #[derive(Event)]
-struct ToggleBoidsDropdown;
+struct ToggleFvoDropdown;
 
 #[derive(Event)]
 struct HideOptionsEv;
-
-#[derive(Component)]
-struct BoidsDropwdownOptions;
 
 #[derive(Bundle)]
 struct DropDownBtnBundle {
@@ -106,32 +103,34 @@ struct DropdownOptionsCtr {
 }
 
 #[derive(Component)]
-struct BoidsDropdownOptionsCtr;
+struct FvoDropdownOptionsCtr;
 
 #[derive(Component)]
-struct BoidsInfoCtr;
+struct FvoInfoCtr;
 
 #[derive(Component)]
-struct BoidsSliderValue;
+struct FvoSliderValue;
 
 #[derive(Resource)]
 struct DragState {
-    info: BoidsInfoOptions,
+    field: FvoOption,
     start_x: f32,
     start_val: f32,
     sensitivity: f32, // units per pixel
 }
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
-enum BoidsInfoOptions {
-    Separation,
-    Alignment,
-    Cohesion,
-    NeighborRadius,
+enum FvoOption {
+    PreferredSpeed,
+    MaxSpeed,
+    MaxAccel,
+    Horizon,
+    SensorRange,
+    Radius,
 }
 
 #[derive(Component)]
-enum BoidsSliderBtn {
+enum FvoSliderBtn {
     Left,
     Right,
 }
@@ -237,7 +236,7 @@ fn handle_hide_dbg_interaction(
 fn toggle_dbg_visibility(
     trigger: On<ToggleDbgVisibilityEv>,
     mut q_node: Query<&mut Node, With<VisibleNode>>,
-    mut q_border: Query<&mut BorderRadius, With<BoidsInfoCtr>>,
+    mut q_border: Query<&mut BorderRadius, With<FvoInfoCtr>>,
     mut q_border_root: Query<&mut Node, (With<RootCtr>, Without<VisibleNode>)>,
     mut cmds: Commands,
 ) {
@@ -267,7 +266,7 @@ fn toggle_dbg_visibility(
 
 fn hide_options(
     _trigger: On<HideOptionsEv>,
-    mut q_node: Query<&mut Node, Or<(With<DropdownOptions>, With<BoidsDropdownOptionsCtr>)>>,
+    mut q_node: Query<&mut Node, Or<(With<DropdownOptions>, With<FvoDropdownOptionsCtr>)>>,
 ) {
     for mut node in q_node.iter_mut() {
         node.display = Display::None;
@@ -302,26 +301,26 @@ fn handle_dropdown_interaction(
     }
 }
 
-fn handle_boids_dropdown_interaction(
+fn handle_fvo_dropdown_interaction(
     mut cmds: Commands,
     mut q_btn: Query<
         (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<BoidsInfoCtr>),
+        (Changed<Interaction>, With<FvoInfoCtr>),
     >,
 ) {
     for (interaction, mut background) in q_btn.iter_mut() {
         match interaction {
-            Interaction::Pressed => cmds.trigger(ToggleBoidsDropdown),
+            Interaction::Pressed => cmds.trigger(ToggleFvoDropdown),
             Interaction::Hovered => background.0 = CLR_BTN_HOVER.into(),
             Interaction::None => background.0 = CLR_BACKGROUND_2.into(),
         }
     }
 }
 
-fn toggle_boids_dropdown_visibility(
-    _trigger: On<ToggleBoidsDropdown>,
-    mut q_node: Query<&mut Node, With<BoidsDropdownOptionsCtr>>,
-    mut q_border: Query<&mut BorderRadius, (With<BoidsInfoCtr>, Without<BoidsDropdownOptionsCtr>)>,
+fn toggle_fvo_dropdown_visibility(
+    _trigger: On<ToggleFvoDropdown>,
+    mut q_node: Query<&mut Node, With<FvoDropdownOptionsCtr>>,
+    mut q_border: Query<&mut BorderRadius, (With<FvoInfoCtr>, Without<FvoDropdownOptionsCtr>)>,
 ) {
     let Ok(mut border) = q_border.single_mut() else {
         return;
@@ -415,7 +414,7 @@ fn draw_ui_box(
     mut cmds: Commands,
     dbg: Res<DbgOptions>,
     dbg_icon: Res<DbgIcon>,
-    boid_updater: Res<BoidUpdater>,
+    fvo_updater: Res<FvoUpdater>,
 ) {
     let root_ctr = (
         RootCtr,
@@ -588,9 +587,9 @@ fn draw_ui_box(
         txt_clr: TextColor::from(CLR_TXT),
     };
 
-    let boids_dropdown_txt_ctr = (
+    let fvo_dropdown_txt_ctr = (
         VisibleNode,
-        BoidsInfoCtr,
+        FvoInfoCtr,
         Button::default(),
         BackgroundColor::from(CLR_BACKGROUND_2),
         BorderRadius::bottom(Val::Px(10.0)),
@@ -600,17 +599,17 @@ fn draw_ui_box(
             border: UiRect::top(Val::Px(1.0)),
             ..default()
         },
-        Name::new("Boids Info Dropdown Button"),
+        Name::new("FVO Dropdown Button"),
     );
 
-    let boids_info_dropwdown_txt = (
+    let fvo_info_dropwdown_txt = (
         TextFont::from_font_size(FONT_SIZE),
         TextColor::from(CLR_TXT),
-        Text::new("Boids Info"),
-        Name::new("Boids Info Dropdown Text"),
+        Text::new("FVO Settings"),
+        Name::new("FVO Dropdown Text"),
     );
 
-    let boids_option_btn = |txt: String, radius: Option<BorderRadius>| {
+    let fvo_option_btn = |txt: String, radius: Option<BorderRadius>| {
         let radius = match radius {
             Some(r) => r,
             None => BorderRadius::ZERO,
@@ -625,54 +624,66 @@ fn draw_ui_box(
                 justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
-            Name::new(format!("Boids Option Btn {}", txt)),
+            Name::new(format!("FVO Option Btn {}", txt)),
         )
     };
 
     let labels = &[
         (
-            "Separation",
-            boid_updater.separation_weight,
-            BoidsInfoOptions::Separation,
+            "Preferred Speed",
+            fvo_updater.preferred_speed,
+            FvoOption::PreferredSpeed,
             None,
         ),
         (
-            "Alignment",
-            boid_updater.alignment_weight,
-            BoidsInfoOptions::Alignment,
+            "Max Speed",
+            fvo_updater.max_speed,
+            FvoOption::MaxSpeed,
             None,
         ),
         (
-            "Cohesion",
-            boid_updater.cohesion_weight,
-            BoidsInfoOptions::Cohesion,
+            "Max Accel",
+            fvo_updater.max_accel,
+            FvoOption::MaxAccel,
+            None,
+        ),
+        (
+            "Horizon",
+            fvo_updater.horizon,
+            FvoOption::Horizon,
+            None,
+        ),
+        (
+            "Sensor Range",
+            fvo_updater.sensor_range,
+            FvoOption::SensorRange,
             None,
         ),
         (
             "Radius",
-            boid_updater.neighbor_radius,
-            BoidsInfoOptions::NeighborRadius,
+            fvo_updater.radius,
+            FvoOption::Radius,
             Some(BorderRadius::top(Val::Px(10.0))),
         ),
     ];
 
-    let boids_slider_ctr = || {
+    let fvo_slider_ctr = || {
         (
             Node {
                 width: Val::Percent(38.0),
                 justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
-            Name::new("Boids Option Slider"),
+            Name::new("FVO Option Slider"),
         )
     };
 
-    let boids_option_slider_arrow_btn = |boid: BoidsInfoOptions, arrow: BoidsSliderBtn| {
+    let fvo_option_slider_arrow_btn = |field: FvoOption, arrow: FvoSliderBtn| {
         (
             BackgroundColor::from(CLR_BACKGROUND_1),
             BorderColor::from(CLR_BORDER),
             BorderRadius::all(Val::Px(10.0)),
-            boid,
+            field,
             arrow,
             Node {
                 border: UiRect::all(Val::Px(1.0)),
@@ -680,23 +691,23 @@ fn draw_ui_box(
                 ..default()
             },
             Button::default(),
-            Name::new(format!("Boids Option Slider Btn")),
+            Name::new(format!("FVO Option Slider Btn")),
         )
     };
 
-    let boids_option_slider_arrow_txt = |txt: String| {
+    let fvo_option_slider_arrow_txt = |txt: String| {
         (
             Text::new(txt.clone()),
             TextColor::from(CLR_TXT),
             TextFont::from_font_size(FONT_SIZE - 1.0),
-            Name::new(format!("Boids Option Slider txt")),
+            Name::new(format!("FVO Option Slider txt")),
         )
     };
 
-    let boids_option_slider_value = |val: String, boid: BoidsInfoOptions| {
+    let fvo_option_slider_value = |val: String, field: FvoOption| {
         (
-            BoidsSliderValue,
-            boid,
+            FvoSliderValue,
+            field,
             Node {
                 margin: UiRect::horizontal(Val::Px(2.5)),
                 top: Val::Px(2.0),
@@ -706,7 +717,7 @@ fn draw_ui_box(
             TextColor::from(CLR_TXT),
             TextFont::from_font_size(FONT_SIZE - 1.0),
             Button::default(),
-            Name::new("Boids Option Slider Value"),
+            Name::new("FVO Option Slider Value"),
         )
     };
 
@@ -842,14 +853,14 @@ fn draw_ui_box(
                 });
         });
 
-        // Boids Info Dropdown Button
-        ctr.spawn(boids_dropdown_txt_ctr).with_children(|dropdown| {
-            dropdown.spawn(boids_info_dropwdown_txt);
+        // FVO Settings Dropdown Button
+        ctr.spawn(fvo_dropdown_txt_ctr).with_children(|dropdown| {
+            dropdown.spawn(fvo_info_dropwdown_txt);
         });
 
-        // Boids Info Dropdown Options Ctr
+        // FVO Settings Dropdown Options Ctr
         ctr.spawn((
-            BoidsDropdownOptionsCtr,
+            FvoDropdownOptionsCtr,
             options_container(BorderRadius::bottom(Val::Px(10.0)), Some(5.0)),
         ))
         .with_children(|options| {
@@ -864,23 +875,23 @@ fn draw_ui_box(
                     ctr.spawn(draw_txt(DrawTxt::Radius, dbg.draw_radius, FONT_SIZE - 1.0));
                 });
 
-            // Boids Info Dropdown Options
+            // FVO Settings Dropdown Options
             for (label, val, info, radius) in labels {
                 options
-                    .spawn(boids_option_btn(label.to_string(), *radius))
+                    .spawn(fvo_option_btn(label.to_string(), *radius))
                     .with_children(|btn| {
                         // Options Txt
                         btn.spawn(option_txt(label.to_string()));
 
                         // Slider
-                        btn.spawn(boids_slider_ctr()).with_children(|slider| {
+                        btn.spawn(fvo_slider_ctr()).with_children(|slider| {
                             slider
-                                .spawn(boids_option_slider_arrow_btn(*info, BoidsSliderBtn::Left))
-                                .with_child(boids_option_slider_arrow_txt("<".to_string()));
-                            slider.spawn(boids_option_slider_value(format!("{:.1}", val), *info));
+                                .spawn(fvo_option_slider_arrow_btn(*info, FvoSliderBtn::Left))
+                                .with_child(fvo_option_slider_arrow_txt("<".to_string()));
+                            slider.spawn(fvo_option_slider_value(format!("{:.1}", val), *info));
                             slider
-                                .spawn(boids_option_slider_arrow_btn(*info, BoidsSliderBtn::Right))
-                                .with_child(boids_option_slider_arrow_txt(">".to_string()));
+                                .spawn(fvo_option_slider_arrow_btn(*info, FvoSliderBtn::Right))
+                                .with_child(fvo_option_slider_arrow_txt(">".to_string()));
                         });
                     });
             }
@@ -889,52 +900,59 @@ fn draw_ui_box(
 }
 
 fn handle_slider_arrow_interaction(
-    mut boids_udpater: ResMut<BoidUpdater>,
+    mut fvo_updater: ResMut<FvoUpdater>,
     mut q_slider: Query<
         (
             &Interaction,
-            &BoidsSliderBtn,
-            &BoidsInfoOptions,
+            &FvoSliderBtn,
+            &FvoOption,
             &mut BackgroundColor,
             &mut BorderColor,
         ),
         Changed<Interaction>,
     >,
     mut q_txt: Query<
-        (&mut Text, &BoidsInfoOptions),
-        (With<BoidsSliderValue>, Without<BoidsSliderBtn>),
+        (&mut Text, &FvoOption),
+        (With<FvoSliderValue>, Without<FvoSliderBtn>),
     >,
 ) {
-    for (interaction, slider, boids_info, mut background_clr, mut border_clr) in q_slider.iter_mut()
+    for (interaction, slider, info, mut background_clr, mut border_clr) in q_slider.iter_mut()
     {
         match interaction {
             Interaction::Pressed => {
-                if let Some((mut txt, _)) =
-                    q_txt.iter_mut().find(|(_txt, info2)| *info2 == boids_info)
-                {
+                if let Some((mut txt, _)) = q_txt.iter_mut().find(|(_txt, info2)| *info2 == info) {
                     // grab the old value…
-                    let mut val = match boids_info {
-                        BoidsInfoOptions::Separation => boids_udpater.separation_weight,
-                        BoidsInfoOptions::Alignment => boids_udpater.alignment_weight,
-                        BoidsInfoOptions::Cohesion => boids_udpater.cohesion_weight,
-                        BoidsInfoOptions::NeighborRadius => boids_udpater.neighbor_radius,
+                    let mut val = match info {
+                        FvoOption::PreferredSpeed => fvo_updater.preferred_speed,
+                        FvoOption::MaxSpeed => fvo_updater.max_speed,
+                        FvoOption::MaxAccel => fvo_updater.max_accel,
+                        FvoOption::Horizon => fvo_updater.horizon,
+                        FvoOption::SensorRange => fvo_updater.sensor_range,
+                        FvoOption::Radius => fvo_updater.radius,
+                    };
+
+                    let step = match info {
+                        FvoOption::PreferredSpeed | FvoOption::MaxSpeed => 1.0,
+                        FvoOption::MaxAccel => 5.0,
+                        FvoOption::Horizon => 0.1,
+                        FvoOption::SensorRange | FvoOption::Radius => 0.1,
                     };
 
                     // bump it
                     match slider {
-                        BoidsSliderBtn::Left => val -= 0.1,
-                        BoidsSliderBtn::Right => val += 0.1,
+                        FvoSliderBtn::Left => val -= step,
+                        FvoSliderBtn::Right => val += step,
                     }
 
-                    // update BoidsUpdater
-                    match boids_info {
-                        BoidsInfoOptions::Separation => boids_udpater.separation_weight = val,
-                        BoidsInfoOptions::Alignment => boids_udpater.alignment_weight = val,
-                        BoidsInfoOptions::Cohesion => boids_udpater.cohesion_weight = val,
-                        BoidsInfoOptions::NeighborRadius => {
-                            boids_udpater.neighbor_radius = val;
-                            boids_udpater.neighbor_exit_radius = val * 1.05
-                        }
+                    val = val.max(0.0);
+
+                    match info {
+                        FvoOption::PreferredSpeed => fvo_updater.preferred_speed = val,
+                        FvoOption::MaxSpeed => fvo_updater.max_speed = val,
+                        FvoOption::MaxAccel => fvo_updater.max_accel = val,
+                        FvoOption::Horizon => fvo_updater.horizon = val.max(0.1),
+                        FvoOption::SensorRange => fvo_updater.sensor_range = val,
+                        FvoOption::Radius => fvo_updater.radius = val,
                     }
                     txt.0 = format!("{:.1}", val);
                 }
@@ -959,12 +977,12 @@ fn slider_drag_start_end(
     q_window: Query<&Window, With<PrimaryWindow>>,
     input: Res<ButtonInput<MouseButton>>,
     mut q: Query<
-        (&Interaction, &mut BackgroundColor, &BoidsInfoOptions),
-        (With<BoidsSliderValue>, Changed<Interaction>),
+        (&Interaction, &mut BackgroundColor, &FvoOption),
+        (With<FvoSliderValue>, Changed<Interaction>),
     >,
-    boids_udpater: Res<BoidUpdater>,
+    fvo_updater: Res<FvoUpdater>,
 ) {
-    for (interaction, mut background_clr, boids_info) in q.iter_mut() {
+    for (interaction, mut background_clr, fvo_field) in q.iter_mut() {
         let Ok(window) = q_window.single() else {
             return;
         };
@@ -976,14 +994,16 @@ fn slider_drag_start_end(
         match *interaction {
             Interaction::Pressed => {
                 if input.just_pressed(MouseButton::Left) {
-                    let start_val = match boids_info {
-                        BoidsInfoOptions::Separation => boids_udpater.separation_weight,
-                        BoidsInfoOptions::Alignment => boids_udpater.alignment_weight,
-                        BoidsInfoOptions::Cohesion => boids_udpater.cohesion_weight,
-                        BoidsInfoOptions::NeighborRadius => boids_udpater.neighbor_radius,
+                    let start_val = match fvo_field {
+                        FvoOption::PreferredSpeed => fvo_updater.preferred_speed,
+                        FvoOption::MaxSpeed => fvo_updater.max_speed,
+                        FvoOption::MaxAccel => fvo_updater.max_accel,
+                        FvoOption::Horizon => fvo_updater.horizon,
+                        FvoOption::SensorRange => fvo_updater.sensor_range,
+                        FvoOption::Radius => fvo_updater.radius,
                     };
                     cmds.insert_resource(DragState {
-                        info: *boids_info,
+                        field: *fvo_field,
                         start_x: cursor_pos.x,
                         start_val,
                         sensitivity: 0.035,
@@ -1000,8 +1020,8 @@ fn slider_drag_start_end(
 fn slider_drag_update(
     drag: Res<DragState>,
     window_q: Query<&Window, With<PrimaryWindow>>,
-    mut boids_udpater: ResMut<BoidUpdater>,
-    mut q_txt: Query<(&mut Text, &BoidsInfoOptions), With<BoidsSliderValue>>,
+    mut fvo_updater: ResMut<FvoUpdater>,
+    mut q_txt: Query<(&mut Text, &FvoOption), With<FvoSliderValue>>,
 ) {
     let Ok(window) = window_q.single() else {
         return;
@@ -1015,18 +1035,17 @@ fn slider_drag_update(
     let new_val = drag.start_val + dx * drag.sensitivity;
 
     // write into your updater
-    match drag.info {
-        BoidsInfoOptions::Separation => boids_udpater.separation_weight = new_val,
-        BoidsInfoOptions::Alignment => boids_udpater.alignment_weight = new_val,
-        BoidsInfoOptions::Cohesion => boids_udpater.cohesion_weight = new_val,
-        BoidsInfoOptions::NeighborRadius => {
-            boids_udpater.neighbor_radius = new_val;
-            boids_udpater.neighbor_exit_radius = new_val * 1.05
-        }
+    match drag.field {
+        FvoOption::PreferredSpeed => fvo_updater.preferred_speed = new_val.max(0.0),
+        FvoOption::MaxSpeed => fvo_updater.max_speed = new_val.max(0.0),
+        FvoOption::MaxAccel => fvo_updater.max_accel = new_val.max(0.0),
+        FvoOption::Horizon => fvo_updater.horizon = new_val.max(0.1),
+        FvoOption::SensorRange => fvo_updater.sensor_range = new_val.max(0.0),
+        FvoOption::Radius => fvo_updater.radius = new_val.max(0.0),
     }
 
     // update the matching Text
-    if let Some((mut txt, _)) = q_txt.iter_mut().find(|(_txt, &info)| info == drag.info) {
+    if let Some((mut txt, _)) = q_txt.iter_mut().find(|(_txt, &info)| info == drag.field) {
         txt.0 = format!("{:.1}", new_val);
     }
 }
