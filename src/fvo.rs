@@ -107,7 +107,17 @@ pub fn calculate_fvo_steering(
                 // preferred velocity = flow direction * target speed
                 let dir2d = ff.sample_direction(tf.translation, &grid);
                 let flow_dir = Vec3::new(dir2d.x, 0.0, dir2d.y).normalize_or_zero();
-                let preferred_vel = flow_dir * agent.settings.preferred_speed;
+
+                // slow down as we approach the goal to reduce overshoot
+                let goal_dist =
+                    tf.translation.distance(ff.destination_cell.world_pos).max(f32::EPSILON);
+                let slow_radius = (agent.settings.sensor_range * 2.0).max(0.1);
+                let speed_scale = if goal_dist < slow_radius {
+                    (goal_dist / slow_radius).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                let preferred_vel = flow_dir * (agent.settings.preferred_speed * speed_scale);
 
                 // build ORCA-style half-plane constraints against neighbors
                 let constraints = build_orca_constraints(
@@ -122,9 +132,23 @@ pub fn calculate_fvo_steering(
                 let solved =
                     solve_orca(preferred_vel, agent.velocity, &constraints, agent.settings.max_speed);
 
+                // strong local separation if still intersecting
+                let mut separation = Vec3::ZERO;
+                for (n_pos, _n_vel, n_radius) in &neighbors {
+                    let offset = tf.translation - *n_pos;
+                    let dist = offset.length();
+                    let combined = agent.settings.radius + *n_radius;
+                    if dist < combined * 1.05 && dist > 1e-3 {
+                        let push = (combined * 1.05 - dist) * dt.recip();
+                        separation += offset.normalize() * push;
+                    }
+                }
+
+                let desired_vel = (solved + separation).clamp_length_max(agent.settings.max_speed);
+
                 // drive toward chosen velocity while respecting acceleration limits
                 let desired_accel =
-                    (solved - agent.velocity).clamp_length_max(agent.settings.max_accel);
+                    (desired_vel - agent.velocity).clamp_length_max(agent.settings.max_accel);
                 let new_velocity = (agent.velocity + desired_accel * dt)
                     .clamp_length_max(agent.settings.max_speed + f32::EPSILON);
 
@@ -208,7 +232,8 @@ fn build_orca_constraints(
             (u, n)
         };
 
-        let point = self_vel + shift * 0.5;
+        // use full shift so a single agent still reacts if the partner lags
+        let point = self_vel + shift;
         constraints.push(OrcaConstraint { point, normal });
     }
 
